@@ -1,0 +1,176 @@
+name: Docker Build, Test & Push to Docker Hub
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  DOCKER_IMAGE_NAME: n8n-konecta-cv-screening
+  DOCKERFILE_PATH: ./Dockerfile
+
+jobs:
+  build-test-push:
+    name: Build, Test & Push Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Create dummy sensitive files for build
+        run: |
+          echo '[]' > credentials.json
+          echo 'OPENROUTER_API_KEY=dummy' > env
+          echo 'HUGGINGFACE_API_KEY=dummy' >> env
+          echo 'PINECONE_API_KEY=dummy' >> env
+          echo 'PINECONE_ENVIRONMENT=dummy' >> env
+          echo 'PINECONE_INDEX_NAME=dummy' >> env
+          echo 'TELEGRAM_BOT_TOKEN=dummy' >> env
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build Docker image for testing
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ env.DOCKERFILE_PATH }}
+          load: true
+          tags: test-image:${{ github.sha }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Test Docker image structure
+        run: |
+          echo "Testing Docker image structure..."
+          docker run --rm test-image:${{ github.sha }} --version || true
+          docker inspect test-image:${{ github.sha }} | jq '.[0].Config.ExposedPorts'
+          docker inspect test-image:${{ github.sha }} | jq '.[0].Config.Env'
+
+      - name: Test Docker image runs successfully
+        run: |
+          echo "Starting container..."
+          docker run -d --name test-container -p 5678:5678 test-image:${{ github.sha }}
+
+          echo "Waiting for n8n to start..."
+          for i in {1..30}; do
+            if docker logs test-container 2>&1 | grep -q "Editor is now accessible"; then
+              echo "n8n started successfully!"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Timeout waiting for n8n to start"
+              docker logs test-container
+              exit 1
+            fi
+            sleep 2
+          done
+
+          echo "Testing health endpoint..."
+          sleep 5
+          curl -f http://localhost:5678/healthz || (docker logs test-container && exit 1)
+
+          echo "Stopping test container..."
+          docker stop test-container
+          docker rm test-container
+
+      - name: Scan Docker image for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: test-image:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Display vulnerability summary
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image --severity HIGH,CRITICAL \
+            test-image:${{ github.sha }} || true
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ env.DOCKERFILE_PATH }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Generate build summary
+        if: always()
+        run: |
+          echo "## Docker Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image Name**: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tags**: ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit SHA**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "### Pull Command" >> $GITHUB_STEP_SUMMARY
+            echo '```bash' >> $GITHUB_STEP_SUMMARY
+            echo "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Clean up test image
+        if: always()
+        run: |
+          docker rmi test-image:${{ github.sha }} || true

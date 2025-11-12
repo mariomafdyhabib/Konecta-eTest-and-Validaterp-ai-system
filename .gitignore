@@ -1,5 +1,33 @@
-# Secrets
+# Secrets - Never commit these files
 credentials.json
 env
 env.json
 .env
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Docker
+*.log
+docker-compose.override.yml
+
+# n8n data
+.n8n/
+n8n-data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
