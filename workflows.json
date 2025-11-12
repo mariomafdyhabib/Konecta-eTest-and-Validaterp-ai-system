@@ -1,0 +1,1010 @@
+{
+  "name": "CV-Screening-bot",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        2192,
+        1328
+      ],
+      "id": "e6c8267a-b54e-4008-91dc-1d45dca8d29d",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "HWw2jjaQs8KL289j",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract the Drive file ID from the Google Form link\n// Works for URLs like:\n// https://drive.google.com/open?id=FILE_ID\n// https://drive.google.com/file/d/FILE_ID/view?usp=drive_link\n\nconst url = $input.first().json['Submit your cover letter or resume'];\nlet fileId = null;\n\n// Try both link patterns\nconst match1 = url.match(/id=([a-zA-Z0-9_-]+)/);\nconst match2 = url.match(/\\/d\\/([a-zA-Z0-9_-]+)\\//);\n\nif (match1) fileId = match1[1];\nelse if (match2) fileId = match2[1];\n\nif (!fileId) {\n  throw new Error(\"Unable to extract Google Drive file ID from URL: \" + url);\n}\n\nreturn [{ fileId }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        944
+      ],
+      "id": "a57e89aa-4ab6-4a35-aa4f-42711fbb3a81",
+      "name": "Get CV ID"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Get CV ID').first().json.fileId }}\n",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1376,
+        944
+      ],
+      "id": "2cb30025-8967-4f6a-889b-cafef447adba",
+      "name": "Download CV",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Ooz9BFztWbsjSQVc",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1664,
+        1104
+      ],
+      "id": "29ea9b95-6f10-4abc-b7e0-2a8decb4a940",
+      "name": "Get Text from CV"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Compare the following CV to the job requirements.\n\nJob Title: {{ $json['Job Title'] }}\n\nJob Responsibilities: {{ $json.Responsibilities }}\n\nJob Requirements: {{ $json.Requirements }}\n\nCandidate CV Text:\n{{ $('Get Text from CV').item.json.text }}\n\nReturn your analysis as valid JSON only.\n",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are an AI-powered HR recruitment assistant that evaluates job applicants based on their CVs and the job’s responsibilities and requirements.  Your task is to: 1. Carefully analyze the candidate’s experience, education, and skills from their CV text. 2. Compare these qualifications against the provided job description, responsibilities, and required skills. 3. Identify strong and weak matches objectively. 4. Output your evaluation in a consistent, structured JSON format.  Follow these strict rules: - Base your answer ONLY on the information provided in the CV and job description. - Do not make assumptions about missing details. - Use professional, concise language suitable for HR summaries. - Always return a valid JSON object as described below.  JSON OUTPUT FORMAT: {   \"match_score\": (a number between 0 and 100 representing how well the CV matches the job),   \"strengths\": \"Short bullet-style summary of the main strengths of the candidate\",   \"weaknesses\": \"Short bullet-style summary of the main gaps or missing skills\",   \"short_reasoning\": \"2–3 sentence summary explaining the reasoning behind the score\" }"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        2176,
+        1104
+      ],
+      "id": "cf45b888-30fe-4e52-9053-37f50008853a",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"match_score\": 65,\n  \"strengths\": \"Short bullet-style summary of the main strengths of the candidate\",\n  \"weaknesses\": \"Short bullet-style summary of the main gaps or missing skills\",\n  \"short_reasoning\": \"2–3 sentence summary explaining the reasoning behind the score\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2320,
+        1328
+      ],
+      "id": "ad7465ae-c84f-4d85-867f-274ef345aaeb",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "sendTo": "abadran716@gmail.com",
+        "subject": "=[High-Scoring Candidate Alert] {{ $('If').item.json.Name }} - {{ $('Get Job Description').item.json['Job Title'] }} (Score: {{ $('Basic LLM Chain').item.json.output.match_score }})\n",
+        "message": "=<p>Dear Hiring Team,</p>\n\n<p>The automated AI screening system has identified a <strong>high-scoring applicant</strong> for the <strong>{{ $('Get Job Description').item.json['Job Title'] }}</strong> position.</p>\n\n<p><b>Candidate Details:</b></p>\n<ul>\n  <li><b>Name:</b> {{ $('If').item.json.Name }}</li>\n  <li><b>Email:</b> {{ $('If').item.json.Email }}</li>\n  <li><b>Phone:</b> {{ $('If').item.json['Phone number'] }}</li>\n  <li><b>Match Score:</b> {{ $('Basic LLM Chain').item.json.output.match_score }}%</li>\n</ul>\n\n<p><b>Summary of Evaluation:</b></p>\n<p>{{ $('Basic LLM Chain').item.json.output.short_reasoning }}</p>\n\n<p>You can review the candidate’s full CV and details in the shared Google Drive folder below:</p>\n<p><a href=\"{{ $('If').item.json['Submit your cover letter or resume'] }}\" target=\"_blank\">{{ $('If').item.json['Submit your cover letter or resume'] }}</a></p>\n\n<p>Kind regards,</p>\n<p><b>AI Recruitment Assistant</b><br>\nn8n Automated Screening System</p>\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2976,
+        1104
+      ],
+      "id": "8bf9161e-30a1-4c6a-8396-71210f4bbbb7",
+      "name": "Notify with top candidates",
+      "webhookId": "b305c69e-0e3a-4369-8607-211bbe3ee41b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "hG9W4VyQy4KBAUnx",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "=Thank You for Applying to Konecta for the {{ $json['Which position are you interested in?'] }} Role\n",
+        "message": "=<p>Dear {{ $json.Name }},</p>\n\n<p>Thank you for applying for the <strong>{{ $json['Which position are you interested in?'] }}</strong> position at <strong>Konecta</strong>.</p>\n\n<p>We’ve received your application and our recruitment team will carefully review your profile. \nIf your qualifications match our requirements, we’ll be in touch soon to discuss next steps.</p>\n\n<p>We appreciate your interest in joining our team and wish you the best of luck with your application!</p>\n\n<p>Warm regards,</p>\n<p><b>Konecta HR Team</b><br>\nKonecta Egypt</p>\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1152,
+        1136
+      ],
+      "id": "6ff355d4-78af-4d04-82e6-d9d1d51a8e82",
+      "name": "Application received mail",
+      "webhookId": "b305c69e-0e3a-4369-8607-211bbe3ee41b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "hG9W4VyQy4KBAUnx",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1gtbJnoMJu4fQeMeDhOaHX-p2_HtS-l2ZxPJ7BbMfwtI",
+          "mode": "list",
+          "cachedResultName": "Job Descriptions",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1gtbJnoMJu4fQeMeDhOaHX-p2_HtS-l2ZxPJ7BbMfwtI/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1gtbJnoMJu4fQeMeDhOaHX-p2_HtS-l2ZxPJ7BbMfwtI/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Job Title",
+              "lookupValue": "AI Engineer"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1952,
+        1104
+      ],
+      "id": "fd53f9d1-3d14-4ac9-a624-3f8d2d0ea49c",
+      "name": "Get Job Description",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "EcBm4OnVFrsju55I",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1lwdKwe6zE9ZVoIDAm29zyrsd3vAFAWTGc6IIlh2tBeQ",
+          "mode": "list",
+          "cachedResultName": "Job Application (Responses)",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lwdKwe6zE9ZVoIDAm29zyrsd3vAFAWTGc6IIlh2tBeQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1470903943,
+          "mode": "list",
+          "cachedResultName": "Form Responses 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lwdKwe6zE9ZVoIDAm29zyrsd3vAFAWTGc6IIlh2tBeQ/edit#gid=1470903943"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Short Reasoning": "={{ $json.output.short_reasoning }}",
+            "Strenghts": "={{ $json.output.strengths }}",
+            "Weakness": "={{ $json.output.weaknesses }}",
+            "Score": "={{ $json.output.match_score }}",
+            "Submit your cover letter or resume": "={{ $('If').first().json['Submit your cover letter or resume'] }}"
+          },
+          "matchingColumns": [
+            "Submit your cover letter or resume"
+          ],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Phone number",
+              "displayName": "Phone number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Which position are you interested in?",
+              "displayName": "Which position are you interested in?",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Submit your cover letter or resume",
+              "displayName": "Submit your cover letter or resume",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Strenghts",
+              "displayName": "Strenghts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Weakness",
+              "displayName": "Weakness",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Short Reasoning",
+              "displayName": "Short Reasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Score",
+              "displayName": "Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2528,
+        1104
+      ],
+      "id": "f1835d3a-740e-4a3b-9a2c-cba972cf6816",
+      "name": "Update main sheet with score",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "EcBm4OnVFrsju55I",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "da37b2f0-e2cc-4b31-9583-f92c3af4d158",
+              "leftValue": "={{ $json.Score }}",
+              "rightValue": 85,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2752,
+        1104
+      ],
+      "id": "e94a1e18-b1a9-43b0-bfed-2fc307b8a920",
+      "name": "Alert with high scoring applicants"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message.text }}",
+        "options": {
+          "systemMessage": "You are Konecta’s AI-powered HR Assistant.\n\nYou have access to:\n1. A memory database containing text extracted from candidate CVs.\n2. A spreadsheet named “Applications” that includes each candidate’s name, job title, match score, strengths, weaknesses, and reasoning.\n3. A spreadsheet named “Job Descriptions” that lists each job title with its responsibilities and requirements.\n\nYour purpose is to help the HR team analyze candidates, compare applicants, and summarize insights.\n\nAlways follow these rules:\n- When a question involves candidate skills or experience → search the CV memory.\n- When a question involves scores, strengths, or weaknesses → read from the Applications sheet.\n- When a question involves job titles or requirements → read from the Job Descriptions sheet.\n- Combine information from all sources for a complete, concise, and factual answer.\n- If you can’t find an answer in any data source, say politely that no data is available.\n- Respond in a professional, human tone suitable for HR staff.\n- Format answers clearly using bullet points or short paragraphs.\n\nExample interactions:\n\n**User:** Who are the top candidates for Data Analyst?\n**Assistant:** Based on the Applications sheet and CV data:\n- *Ali Badran* — Score: 94 — Strong in Python and data visualization.\n- *Sara Ahmed* — Score: 91 — Skilled in SQL and reporting.\nThese candidates match the Data Analyst job requirements most closely.\n\n**User:** Show me weaknesses for candidates under 80.\n**Assistant:** From the Applications sheet:\n- *Omar Hany* (Score 75): Lacks strong SQL background.\n- *Laila Farid* (Score 70): Limited project experience.\n\n**User:** What are the responsibilities for Marketing Manager?\n**Assistant:** From the Job Descriptions sheet:\n- Plan and execute marketing campaigns.\n- Manage social media channels.\n- Analyze performance metrics.\n\nYour role: act as a professional HR analyst assistant who can reason with data from both spreadsheets and memory.\n\nMake sure to reply with normal text No Markup or html languages "
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        432
+      ],
+      "id": "7390f1e1-12f1-4c8a-8c47-29b763733bd2",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        48,
+        656
+      ],
+      "id": "1be43089-fcc1-4a96-9b00-3d9ecc9f7d7f",
+      "name": "OpenRouter Chat Model1",
+      "credentials": {
+        "openRouterApi": {
+          "id": "HWw2jjaQs8KL289j",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -176,
+        640
+      ],
+      "id": "deb7728c-cfa0-432d-848c-1bbbfcba2dc3",
+      "name": "Telegram Trigger",
+      "webhookId": "7dde97ad-ce1e-49e1-a5eb-93cc29f518d7",
+      "credentials": {
+        "telegramApi": {
+          "id": "88BYzicBnLoNhTZ9",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.message.chat.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        176,
+        656
+      ],
+      "id": "1a40b57a-0151-4f4d-8de3-0ccbbc109134",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        928,
+        640
+      ],
+      "id": "63f82607-1b6c-4af8-93a7-3f26d77afc0b",
+      "name": "Send a text message",
+      "webhookId": "7b84ac24-d288-496e-8822-d34e5b008855",
+      "credentials": {
+        "telegramApi": {
+          "id": "88BYzicBnLoNhTZ9",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Give the agent numerical & qualitative evaluation data",
+        "documentId": {
+          "__rl": true,
+          "value": "1lwdKwe6zE9ZVoIDAm29zyrsd3vAFAWTGc6IIlh2tBeQ",
+          "mode": "list",
+          "cachedResultName": "Job Application (Responses)",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lwdKwe6zE9ZVoIDAm29zyrsd3vAFAWTGc6IIlh2tBeQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1470903943,
+          "mode": "list",
+          "cachedResultName": "Form Responses 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lwdKwe6zE9ZVoIDAm29zyrsd3vAFAWTGc6IIlh2tBeQ/edit#gid=1470903943"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        304,
+        656
+      ],
+      "id": "1cb2b75c-2c83-4d36-bddc-a71f49668fa3",
+      "name": "Main Applications Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "EcBm4OnVFrsju55I",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Let the agent retrieve job context for comparisons",
+        "documentId": {
+          "__rl": true,
+          "value": "1gtbJnoMJu4fQeMeDhOaHX-p2_HtS-l2ZxPJ7BbMfwtI",
+          "mode": "list",
+          "cachedResultName": "Job Descriptions",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1gtbJnoMJu4fQeMeDhOaHX-p2_HtS-l2ZxPJ7BbMfwtI/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1gtbJnoMJu4fQeMeDhOaHX-p2_HtS-l2ZxPJ7BbMfwtI/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        432,
+        656
+      ],
+      "id": "ed185f4d-3ab2-4126-b3e6-07c0779a7b80",
+      "name": "Job Descriptions Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "EcBm4OnVFrsju55I",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        928
+      ],
+      "id": "06f0f143-2288-443a-8f65-15f99249bea9",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsHuggingFaceInference",
+      "typeVersion": 1,
+      "position": [
+        640,
+        864
+      ],
+      "id": "534658b1-29e1-40aa-8d55-4ed533708c47",
+      "name": "Embeddings HuggingFace Inference",
+      "credentials": {
+        "huggingFaceApi": {
+          "id": "yCeTQMnkeeQ4aidD",
+          "name": "HuggingFaceApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "cvs-vectorestore-konecta",
+          "mode": "list",
+          "cachedResultName": "cvs-vectorestore-konecta"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        1600,
+        704
+      ],
+      "id": "58220128-f54e-4256-8c72-c2f3d81d56bd",
+      "name": "Pinecone Vector Store",
+      "credentials": {
+        "pineconeApi": {
+          "id": "ZzroYu4mkdKJ1jss",
+          "name": "PineconeApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Get more Information about applicant through their CVs that are stored here",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "cvs-vectorestore-konecta",
+          "mode": "list",
+          "cachedResultName": "cvs-vectorestore-konecta"
+        },
+        "topK": 10,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        560,
+        656
+      ],
+      "id": "f990e114-8dc9-46dd-a77c-8754a1c31277",
+      "name": "Pinecone Vector Store1",
+      "credentials": {
+        "pineconeApi": {
+          "id": "ZzroYu4mkdKJ1jss",
+          "name": "PineconeApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1lwdKwe6zE9ZVoIDAm29zyrsd3vAFAWTGc6IIlh2tBeQ",
+          "mode": "list",
+          "cachedResultName": "Job Application (Responses)",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lwdKwe6zE9ZVoIDAm29zyrsd3vAFAWTGc6IIlh2tBeQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1470903943,
+          "mode": "list",
+          "cachedResultName": "Form Responses 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1lwdKwe6zE9ZVoIDAm29zyrsd3vAFAWTGc6IIlh2tBeQ/edit#gid=1470903943"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        384,
+        1040
+      ],
+      "id": "77e46e1b-52e9-486e-a541-df103a98b8d4",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "EcBm4OnVFrsju55I",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 3
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -176,
+        1040
+      ],
+      "id": "299bc413-36dd-4fe6-a84e-026e5a28af5e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0962ec61-c1b4-4d80-8a1a-fa7205b7bb99",
+              "leftValue": "={{ $json.Strenghts }}",
+              "rightValue": "##",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        928,
+        1040
+      ],
+      "id": "4e81e066-dbe0-4bde-8860-5d103c002eef",
+      "name": "If"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get CV ID": {
+      "main": [
+        [
+          {
+            "node": "Download CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download CV": {
+      "main": [
+        [
+          {
+            "node": "Get Text from CV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Pinecone Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Text from CV": {
+      "main": [
+        [
+          {
+            "node": "Get Job Description",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Update main sheet with score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job Description": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update main sheet with score": {
+      "main": [
+        [
+          {
+            "node": "Alert with high scoring applicants",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert with high scoring applicants": {
+      "main": [
+        [
+          {
+            "node": "Notify with top candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Main Applications Sheet": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job Descriptions Sheet": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings HuggingFace Inference": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Pinecone Vector Store1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Get CV ID",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Application received mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "76d7e342-6d50-4620-a3d3-3fd8ec5b8038",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "213ca864ced9a312a68059b04ced308a72a338ee141e5b80623632299435e61c"
+  },
+  "id": "8w0LvrL7kclDO5h7",
+  "tags": []
+}
