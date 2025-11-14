@@ -1,0 +1,137 @@
+# Production values for n8n-cv-screening
+# This file contains production-ready configuration
+# Usage: helm install n8n-cv-screening ./helm-chart/n8n -f values-production.yaml
+
+# Number of replicas for high availability
+replicaCount: 2
+
+image:
+  repository: mariomafdy/n8n-lampada
+  pullPolicy: Always
+  # Use a specific version tag in production instead of 'latest'
+  tag: "latest"  # Change to specific version like "v1.0.0"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: "n8n-cv-screening"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "5678"
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+
+service:
+  type: ClusterIP
+  port: 5678
+  targetPort: 5678
+
+# Enable ingress for production with TLS
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: n8n-cv.yourdomain.com  # CHANGE THIS to your domain
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: n8n-cv-screening-tls
+      hosts:
+        - n8n-cv.yourdomain.com  # CHANGE THIS to your domain
+
+# Production resource allocation
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 1000m
+    memory: 1Gi
+
+# Enable autoscaling for production
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+# Production persistence settings
+persistence:
+  enabled: true
+  storageClass: ""  # Specify your storage class if needed
+  accessMode: ReadWriteOnce
+  size: 20Gi  # Increased size for production
+
+# Production environment variables
+env:
+  N8N_BASIC_AUTH_ACTIVE: "true"  # Enable basic auth for production
+  N8N_HOST: "0.0.0.0"
+  N8N_PORT: "5678"
+  N8N_PROTOCOL: "https"  # Use HTTPS in production
+  N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+  N8N_SECURE_COOKIE: "true"  # Secure cookies for production
+  TZ: "America/New_York"  # Set to your timezone
+  N8N_LOG_LEVEL: "info"
+  N8N_METRICS: "true"
+  EXECUTIONS_DATA_SAVE_ON_ERROR: "all"
+  EXECUTIONS_DATA_SAVE_ON_SUCCESS: "all"
+  EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "true"
+
+# Secrets configuration
+# IMPORTANT: Create the secret BEFORE deploying
+# kubectl create secret generic n8n-secrets --from-literal=...
+secrets:
+  enabled: true
+  name: n8n-secrets
+  create: false  # Never create secrets via Helm in production
+
+# Node selector for specific node pools
+nodeSelector:
+  # Uncomment and modify if you have specific node requirements
+  # node.kubernetes.io/instance-type: t3.medium
+  # workload-type: application
+
+# Tolerations for node taints
+tolerations: []
+  # - key: "dedicated"
+  #   operator: "Equal"
+  #   value: "n8n"
+  #   effect: "NoSchedule"
+
+# Affinity rules for pod placement
+affinity:
+  # Pod anti-affinity to spread replicas across nodes
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - n8n-cv-screening
+          topologyKey: kubernetes.io/hostname

@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: mariomafdy/n8n-lampada:latest
+    container_name: n8n-cv-screening
+    restart: unless-stopped
+
+    ports:
+      - "5678:5678"
+
+    environment:
+      # n8n Basic Configuration
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_SECURE_COOKIE=false
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+
+      # API Keys (loaded from .env file)
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
+      - PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+
+      # Google OAuth Credentials
+      - GOOGLE_DRIVE_CLIENT_ID=${GOOGLE_DRIVE_CLIENT_ID}
+      - GOOGLE_DRIVE_CLIENT_SECRET=${GOOGLE_DRIVE_CLIENT_SECRET}
+      - GOOGLE_SHEETS_CLIENT_ID=${GOOGLE_SHEETS_CLIENT_ID}
+      - GOOGLE_SHEETS_CLIENT_SECRET=${GOOGLE_SHEETS_CLIENT_SECRET}
+      - GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID}
+      - GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET}
+
+      # Application Configuration
+      - JOB_DESCRIPTIONS_SHEET_ID=${JOB_DESCRIPTIONS_SHEET_ID}
+      - APPLICATIONS_SHEET_ID=${APPLICATIONS_SHEET_ID}
+      - HR_NOTIFICATION_EMAIL=${HR_NOTIFICATION_EMAIL}
+
+      # Optional: Timezone
+      - TZ=${TZ:-UTC}
+
+    volumes:
+      # Persist n8n data (database, credentials, workflows)
+      - n8n-data:/home/node/.n8n
+
+      # Optional: Mount local workflows for development
+      # - ./workflows.json:/home/node/.n8n/workflows.json:ro
+
+      # Optional: Mount local credentials for development
+      # - ./credentials.json:/home/node/.n8n/credentials.json:ro
+
+    networks:
+      - n8n-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    labels:
+      - "com.konecta.description=N8N CV Screening Automation"
+      - "com.konecta.service=n8n"
+      - "com.konecta.version=1.0"
+
+  # Optional: Add a reverse proxy for production
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: n8n-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./ssl:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     - n8n
+  #   networks:
+  #     - n8n-network
+
+networks:
+  n8n-network:
+    driver: bridge
+    name: n8n-network
+
+volumes:
+  n8n-data:
+    driver: local
+    name: n8n-data

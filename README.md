@@ -1,28 +1,102 @@
-# N8N CV Screening Workflow - Docker Setup
+# N8N CV Screening Workflow - Deployment Guide
 
-This Docker container runs n8n with the CV-Screening-bot workflow pre-installed.
+This application runs n8n with the CV-Screening-bot workflow pre-installed. It provides AI-powered candidate evaluation, automated CV processing, and HR notifications.
+
+## Deployment Options
+
+Choose the deployment method that best fits your needs:
+
+- **Docker Compose**: Best for local development and single-server deployments
+- **Kubernetes/Helm**: Best for production, scalability, and high availability
+- **Docker Run**: Simple single-container deployment
 
 ## Quick Start
 
-### 1. Build the Docker Image
+### Pre-Deployment Validation
+
+Before deploying, validate your setup:
 
 ```bash
-cd /home/mario/Desktop/terra/docker-n8n
-docker build -t n8n-custom .
+./validate-deployment.sh
 ```
 
-### 2. Run the Container
+This script checks:
+- ✅ Required tools (Docker, Helm, kubectl)
+- ✅ Configuration files syntax
+- ✅ Environment variables
+- ✅ Kubernetes cluster connectivity
 
-```bash
-docker run -d -p 5678:5678 --name n8n-test --env-file env n8n-custom
-```
+### Option 1: Using Docker Compose (Recommended for Local Development)
 
-### 3. Access n8n UI
+1. **Create your environment file**
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your API keys
+   ```
 
-Open your browser and navigate to:
-```
-http://localhost:5678
-```
+2. **Start the application**
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Access n8n UI**
+   ```
+   http://localhost:5678
+   ```
+
+4. **View logs**
+   ```bash
+   docker-compose logs -f
+   ```
+
+### Option 2: Using Docker Run
+
+1. **Pull from Docker Hub**
+   ```bash
+   docker pull mariomafdy/n8n-lampada:latest
+   ```
+
+2. **Run the container**
+   ```bash
+   docker run -d -p 5678:5678 --name n8n-test --env-file .env mariomafdy/n8n-lampada
+   ```
+
+### Option 3: Using Kubernetes/Helm (Recommended for Production)
+
+1. **Create Kubernetes secret**
+   ```bash
+   kubectl create secret generic n8n-secrets --from-env-file=.env
+   ```
+
+2. **Install with Helm**
+   ```bash
+   helm install n8n-cv-screening ./helm-chart/n8n
+   ```
+
+3. **Access n8n UI**
+   ```bash
+   kubectl port-forward svc/n8n-cv-screening 5678:5678
+   ```
+   Visit: http://localhost:5678
+
+See the [Helm Quick Start Guide](helm-chart/HELM_QUICKSTART.md) for detailed instructions.
+
+### Option 4: Build Locally
+
+1. **Build the Docker Image**
+   ```bash
+   docker build -t n8n-custom .
+   ```
+
+2. **Run the Container**
+   ```bash
+   docker run -d -p 5678:5678 --name n8n-test --env-file .env n8n-custom
+   ```
+
+3. **Access n8n UI**
+   ```
+   http://localhost:5678
+   ```
 
 ## What's Included
 
@@ -135,48 +209,87 @@ The **CV-Screening-bot** workflow:
    - Access application scores and job descriptions
    - Provides candidate insights
 
-## Docker Commands
+## Docker Compose Commands
+
+### Start services
+```bash
+docker-compose up -d
+```
+
+### Stop services
+```bash
+docker-compose down
+```
 
 ### View logs
 ```bash
-docker logs n8n-test
+docker-compose logs -f n8n
+```
+
+### Restart services
+```bash
+docker-compose restart
+```
+
+### Stop and remove volumes (WARNING: deletes all data)
+```bash
+docker-compose down -v
+```
+
+### Update to latest image
+```bash
+docker-compose pull
+docker-compose up -d
+```
+
+## Docker Commands (without Compose)
+
+### View logs
+```bash
+docker logs n8n-cv-screening
 ```
 
 ### Stop container
 ```bash
-docker stop n8n-test
+docker stop n8n-cv-screening
 ```
 
 ### Start container
 ```bash
-docker start n8n-test
+docker start n8n-cv-screening
 ```
 
 ### Remove container
 ```bash
-docker rm n8n-test
+docker rm n8n-cv-screening
 ```
 
 ### Rebuild image after changes
 ```bash
 docker build -t n8n-custom .
-docker stop n8n-test
-docker rm n8n-test
-docker run -d -p 5678:5678 --name n8n-test --env-file env n8n-custom
+docker stop n8n-cv-screening
+docker rm n8n-cv-screening
+docker run -d -p 5678:5678 --name n8n-cv-screening --env-file .env n8n-custom
 ```
 
 ## Files Structure
 
 ```
-docker-n8n/
-├── Dockerfile              # Docker image configuration
-├── startup.sh              # Container startup script
-├── workflows.json          # CV-Screening-bot workflow
-├── credentials.json        # Empty (credentials set via UI)
-├── env                     # Environment variables
-├── env.json               # Environment variables in JSON format
-├── setup-credentials.sh   # Helper script showing credential info
-└── README.md              # This file
+konecta-cv-screening/
+├── .github/
+│   ├── workflows/
+│   │   └── docker-build-push.yml  # CI/CD pipeline
+│   └── DOCKER_CI_SETUP.md         # CI/CD documentation
+├── Dockerfile                      # Docker image configuration
+├── docker-compose.yml              # Docker Compose configuration
+├── startup.sh                      # Container startup script
+├── workflows.json                  # CV-Screening-bot workflow
+├── credentials.json                # Empty (credentials set via UI)
+├── .env.example                    # Environment variables template
+├── .env                            # Your actual environment variables (not in git)
+├── setup-credentials.sh            # Helper script showing credential info
+├── .gitignore                      # Git ignore rules
+└── README.md                       # This file
 ```
 
 ## Troubleshooting
@@ -199,31 +312,112 @@ Make sure all credentials are configured in the n8n UI
 
 ## Data Persistence
 
-The container uses SQLite database stored in `/home/node/.n8n/database.sqlite` inside the container. To persist data across container restarts, consider using a Docker volume:
+The container uses SQLite database stored in `/home/node/.n8n/database.sqlite` inside the container.
+
+### Using Docker Compose (Automatic)
+When using Docker Compose, data persistence is automatically configured through the `n8n-data` volume. Your workflows, credentials, and database are preserved across container restarts and updates.
+
+### Using Docker Run (Manual)
+To persist data when using `docker run`, mount a volume:
 
 ```bash
 docker run -d -p 5678:5678 \
-  --name n8n-test \
-  --env-file env \
+  --name n8n-cv-screening \
+  --env-file .env \
   -v n8n-data:/home/node/.n8n \
-  n8n-custom
+  mariomafdy/n8n-lampada
+```
+
+### Backup Your Data
+```bash
+# Using Docker Compose
+docker-compose exec n8n n8n export:workflow --all --output=/tmp/workflows-backup.json
+docker cp n8n-cv-screening:/tmp/workflows-backup.json ./backup/
+
+# Or backup the entire volume
+docker run --rm -v n8n-data:/data -v $(pwd):/backup ubuntu tar czf /backup/n8n-backup.tar.gz /data
 ```
 
 ## Security Notes
 
-- The `env` file contains sensitive API keys - keep it secure
-- Never commit the `env` file to version control
+- The `.env` file contains sensitive API keys - keep it secure
+- Never commit the `.env` file to version control (it's in .gitignore)
+- Use `.env.example` as a template for setting up your environment
 - Basic auth is disabled for local testing - enable it for production
 - For production use, consider using Docker secrets or environment variable injection
+- The GitHub Actions pipeline automatically handles secrets during CI/CD
+
+## CI/CD Pipeline
+
+This project includes automated GitHub Actions workflow for building and deploying to Docker Hub.
+
+### Features
+- Automatic Docker image build on push to main/develop
+- Comprehensive testing (health checks, startup validation)
+- Security scanning with Trivy
+- Multi-architecture builds (AMD64 + ARM64)
+- Automatic tagging and versioning
+
+### Setup
+See [.github/DOCKER_CI_SETUP.md](.github/DOCKER_CI_SETUP.md) for detailed CI/CD setup instructions.
+
+### Required GitHub Secrets
+- `DOCKERHUB_USERNAME` - Your Docker Hub username
+- `DOCKERHUB_TOKEN` - Your Docker Hub access token
 
 ## Next Steps
 
-1. ✅ Container is running
-2. ✅ Workflow is imported
-3. ✅ Environment variables are loaded
-4. ⏳ Configure credentials in n8n UI (http://localhost:5678)
-5. ⏳ Test the workflow by activating it
-6. ⏳ Submit a test application to verify end-to-end flow
+1. **Setup Environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API keys
+   ```
 
+2. **Start the Application**
+   ```bash
+   docker-compose up -d
+   ```
 
-docker run -p 5678:5678 mariomafdy/n8n-lampada
+3. **Configure Credentials**
+   - Access n8n UI at http://localhost:5678
+   - Add all required credentials (see "Required Credentials Setup" above)
+
+4. **Test the Workflow**
+   - Activate the CV-Screening-bot workflow
+   - Submit a test application
+
+5. **Setup CI/CD** (Optional)
+   - Add GitHub secrets for Docker Hub
+   - Push to main branch to trigger automatic builds
+
+## Deployment Comparison
+
+| Feature | Docker Compose | Kubernetes/Helm |
+|---------|---------------|-----------------|
+| **Best For** | Local dev, single server | Production, scalability |
+| **Setup Complexity** | Low | Medium |
+| **Scalability** | Manual | Automatic |
+| **High Availability** | No | Yes |
+| **Auto-restart** | Yes | Yes |
+| **Load Balancing** | No | Yes |
+| **Rolling Updates** | Manual | Automatic |
+| **Secret Management** | .env file | Kubernetes Secrets |
+| **Monitoring** | Manual | Integrated |
+| **Backup** | Manual | Volume snapshots |
+
+## Support & Documentation
+
+### Docker Deployment
+- **Docker Compose**: [docker-compose.yml](docker-compose.yml)
+- **Environment Variables**: [.env.example](.env.example)
+- **Docker Hub**: [mariomafdy/n8n-lampada](https://hub.docker.com/r/mariomafdy/n8n-lampada)
+
+### Kubernetes Deployment
+- **Helm Chart**: [helm-chart/n8n/](helm-chart/n8n/)
+- **Helm Quick Start**: [helm-chart/HELM_QUICKSTART.md](helm-chart/HELM_QUICKSTART.md)
+- **Helm Documentation**: [helm-chart/n8n/README.md](helm-chart/n8n/README.md)
+- **Production Values**: [helm-chart/n8n/values-production.yaml](helm-chart/n8n/values-production.yaml)
+
+### CI/CD & Automation
+- **GitHub Actions Pipeline**: [.github/workflows/docker-build-push.yml](.github/workflows/docker-build-push.yml)
+- **CI/CD Setup Guide**: [.github/DOCKER_CI_SETUP.md](.github/DOCKER_CI_SETUP.md)

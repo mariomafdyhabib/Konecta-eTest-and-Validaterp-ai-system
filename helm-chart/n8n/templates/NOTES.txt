@@ -1,0 +1,125 @@
+================================================================================
+N8N CV Screening Bot has been installed!
+================================================================================
+
+Your release is named: {{ .Release.Name }}
+
+Chart version: {{ .Chart.Version }}
+App version: {{ .Chart.AppVersion }}
+
+To access n8n:
+
+{{- if .Values.ingress.enabled }}
+
+1. Your n8n instance will be available at:
+{{- range .Values.ingress.hosts }}
+   http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+
+{{- else if contains "NodePort" .Values.service.type }}
+
+1. Get the application URL by running:
+   export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "n8n.fullname" . }})
+   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+   echo "Visit http://$NODE_IP:$NODE_PORT to access n8n"
+
+{{- else if contains "LoadBalancer" .Values.service.type }}
+
+1. Get the application URL by running:
+   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+
+   export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "n8n.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+   echo "Visit http://$SERVICE_IP:{{ .Values.service.port }} to access n8n"
+
+{{- else if contains "ClusterIP" .Values.service.type }}
+
+1. Port-forward to access n8n locally:
+   kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "n8n.fullname" . }} 5678:{{ .Values.service.port }}
+
+2. Visit http://localhost:5678 in your browser
+
+{{- end }}
+
+================================================================================
+IMPORTANT: Configure Your Secrets
+================================================================================
+
+{{- if .Values.secrets.enabled }}
+{{- if not .Values.secrets.create }}
+
+Before n8n can work properly, you need to create a Kubernetes secret with your API keys.
+
+Run the following command with your actual values:
+
+kubectl create secret generic {{ .Values.secrets.name }} \
+  --namespace {{ .Release.Namespace }} \
+  --from-literal=OPENROUTER_API_KEY=your_openrouter_key \
+  --from-literal=HUGGINGFACE_API_KEY=your_huggingface_key \
+  --from-literal=PINECONE_API_KEY=your_pinecone_key \
+  --from-literal=PINECONE_ENVIRONMENT=your_pinecone_env \
+  --from-literal=PINECONE_INDEX_NAME=your_pinecone_index \
+  --from-literal=TELEGRAM_BOT_TOKEN=your_telegram_token \
+  --from-literal=GOOGLE_DRIVE_CLIENT_ID=your_gdrive_id \
+  --from-literal=GOOGLE_DRIVE_CLIENT_SECRET=your_gdrive_secret \
+  --from-literal=GOOGLE_SHEETS_CLIENT_ID=your_gsheets_id \
+  --from-literal=GOOGLE_SHEETS_CLIENT_SECRET=your_gsheets_secret \
+  --from-literal=GMAIL_CLIENT_ID=your_gmail_id \
+  --from-literal=GMAIL_CLIENT_SECRET=your_gmail_secret \
+  --from-literal=JOB_DESCRIPTIONS_SHEET_ID=your_job_sheet_id \
+  --from-literal=APPLICATIONS_SHEET_ID=your_app_sheet_id \
+  --from-literal=HR_NOTIFICATION_EMAIL=hr@example.com
+
+After creating the secret, restart the deployment:
+kubectl rollout restart deployment/{{ include "n8n.fullname" . }} -n {{ .Release.Namespace }}
+
+{{- else }}
+
+WARNING: You have enabled automatic secret creation via Helm values.
+This is NOT RECOMMENDED for production environments!
+
+For production, create secrets manually using kubectl or a secrets management solution.
+{{- end }}
+{{- else }}
+
+WARNING: Secrets are disabled. Your n8n instance will not have access to API keys.
+Set secrets.enabled=true in values.yaml to enable secret management.
+{{- end }}
+
+================================================================================
+Next Steps
+================================================================================
+
+1. Access the n8n UI using the instructions above
+2. Configure credentials in n8n Settings → Credentials
+3. Activate the CV-Screening-bot workflow
+4. Test the workflow with a sample application
+
+================================================================================
+Monitoring
+================================================================================
+
+View logs:
+  kubectl logs -f deployment/{{ include "n8n.fullname" . }} -n {{ .Release.Namespace }}
+
+Check pod status:
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Check service status:
+  kubectl get svc -n {{ .Release.Namespace }} {{ include "n8n.fullname" . }}
+
+{{- if .Values.persistence.enabled }}
+
+Check persistent volume:
+  kubectl get pvc -n {{ .Release.Namespace }} {{ include "n8n.fullname" . }}-data
+{{- end }}
+
+================================================================================
+Documentation
+================================================================================
+
+Helm Chart: https://github.com/mariomafdy/konecta-cv-screening
+N8N Docs: https://docs.n8n.io/
+
+For support, visit: https://github.com/mariomafdy/konecta-cv-screening/issues
+
+================================================================================

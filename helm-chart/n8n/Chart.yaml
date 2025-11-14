@@ -1,6 +1,6 @@
 apiVersion: v2
-name: n8n
-description: A Helm chart for n8n workflow automation tool
+name: n8n-cv-screening
+description: N8N CV Screening Bot - Automated recruitment workflow with AI-powered candidate evaluation
 type: application
 version: 1.0.0
 appVersion: "latest"
@@ -8,6 +8,14 @@ keywords:
   - n8n
   - workflow
   - automation
+  - cv-screening
+  - recruitment
+  - hr
+  - ai
+home: https://github.com/mariomafdy/konecta-cv-screening
+sources:
+  - https://github.com/mariomafdy/konecta-cv-screening
 maintainers:
-  - name: Your Name
-    email: your.email@example.com
+  - name: Mario Mafdy
+    email: mariomafdy@example.com
+icon: https://n8n.io/favicon.ico

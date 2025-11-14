@@ -42,9 +42,10 @@ spec:
         - name: {{ $key }}
           value: {{ $value | quote }}
         {{- end }}
-        {{- with .Values.envFrom }}
+        {{- if .Values.secrets.enabled }}
         envFrom:
-          {{- toYaml . | nindent 10 }}
+        - secretRef:
+            name: {{ .Values.secrets.name }}
         {{- end }}
         livenessProbe:
           httpGet:

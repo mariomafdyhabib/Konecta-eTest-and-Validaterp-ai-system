@@ -1,14 +1,17 @@
-# Default values for n8n
+# Default values for n8n-cv-screening
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
 replicaCount: 1
 
 image:
-  repository: your-registry/n8n  # Update this with your Docker registry
+  repository: mariomafdy/n8n-lampada
   pullPolicy: IfNotPresent
   tag: "latest"
 
 imagePullSecrets: []
 nameOverride: ""
-fullnameOverride: ""
+fullnameOverride: "n8n-cv-screening"
 
 serviceAccount:
   create: true
@@ -25,25 +28,30 @@ securityContext:
   runAsUser: 1000
 
 service:
-  type: ClusterIP
+  type: LoadBalancer
   port: 5678
   targetPort: 5678
 
+
 ingress:
   enabled: false
-  className: ""
+  className: "nginx"
   annotations: {}
-    # kubernetes.io/ingress.class: nginx
-    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  # Example annotations:
+  # annotations:
+  #   kubernetes.io/ingress.class: nginx
+  #   cert-manager.io/cluster-issuer: letsencrypt-prod
+  #   nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+  #   nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
   hosts:
-    - host: n8n.example.com
+    - host: n8n-cv-screening.example.com
       paths:
         - path: /
           pathType: Prefix
   tls: []
-  #  - secretName: n8n-tls
+  #  - secretName: n8n-cv-screening-tls
   #    hosts:
-  #      - n8n.example.com
+  #      - n8n-cv-screening.example.com
 
 resources:
   limits:
@@ -72,11 +80,52 @@ env:
   N8N_PROTOCOL: "http"
   N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
   N8N_SECURE_COOKIE: "false"
+  TZ: "UTC"
+
+# Secrets configuration
+# Create a Kubernetes secret with your API keys and credentials
+# kubectl create secret generic n8n-secrets \
+#   --from-literal=OPENROUTER_API_KEY=your_key \
+#   --from-literal=HUGGINGFACE_API_KEY=your_key \
+#   --from-literal=PINECONE_API_KEY=your_key \
+#   --from-literal=PINECONE_ENVIRONMENT=your_env \
+#   --from-literal=PINECONE_INDEX_NAME=your_index \
+#   --from-literal=TELEGRAM_BOT_TOKEN=your_token \
+#   --from-literal=GOOGLE_DRIVE_CLIENT_ID=your_id \
+#   --from-literal=GOOGLE_DRIVE_CLIENT_SECRET=your_secret \
+#   --from-literal=GOOGLE_SHEETS_CLIENT_ID=your_id \
+#   --from-literal=GOOGLE_SHEETS_CLIENT_SECRET=your_secret \
+#   --from-literal=GMAIL_CLIENT_ID=your_id \
+#   --from-literal=GMAIL_CLIENT_SECRET=your_secret \
+#   --from-literal=JOB_DESCRIPTIONS_SHEET_ID=your_id \
+#   --from-literal=APPLICATIONS_SHEET_ID=your_id \
+#   --from-literal=HR_NOTIFICATION_EMAIL=hr@example.com
 
 # Additional environment variables from secrets
-envFrom: []
-  # - secretRef:
-  #     name: n8n-secrets
+# Set enabled to true when you have created the n8n-secrets in your cluster
+# For testing without secrets, keep this disabled (false)
+secrets:
+  enabled: false
+  name: n8n-secrets
+  # If you want to create the secret via Helm, set create to true
+  # and provide the values below (NOT RECOMMENDED for production)
+  create: false
+  data: {}
+    # OPENROUTER_API_KEY: ""
+    # HUGGINGFACE_API_KEY: ""
+    # PINECONE_API_KEY: ""
+    # PINECONE_ENVIRONMENT: ""
+    # PINECONE_INDEX_NAME: ""
+    # TELEGRAM_BOT_TOKEN: ""
+    # GOOGLE_DRIVE_CLIENT_ID: ""
+    # GOOGLE_DRIVE_CLIENT_SECRET: ""
+    # GOOGLE_SHEETS_CLIENT_ID: ""
+    # GOOGLE_SHEETS_CLIENT_SECRET: ""
+    # GMAIL_CLIENT_ID: ""
+    # GMAIL_CLIENT_SECRET: ""
+    # JOB_DESCRIPTIONS_SHEET_ID: ""
+    # APPLICATIONS_SHEET_ID: ""
+    # HR_NOTIFICATION_EMAIL: ""
 
 nodeSelector: {}
 
